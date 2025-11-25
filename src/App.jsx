@@ -39,7 +39,12 @@ function App() {
       // Process Scores into the format expected by components:
       // Array of { id: 'J1', scores: { teamId: points } }
       const processedScores = [];
-      const matchdays = [...new Set(scoresData.map(s => s.matchday))].sort(); // J1, J2...
+      const matchdays = [...new Set(scoresData.map(s => s.matchday))].sort((a, b) => {
+        // Extract number from string (e.g., "J1" -> 1, "J10" -> 10)
+        const numA = parseInt(a.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.replace(/\D/g, '')) || 0;
+        return numA - numB;
+      });
 
       matchdays.forEach(matchday => {
         const matchdayScores = {};
