@@ -1,11 +1,13 @@
 
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { calculateStandings, calculateRankHistory } from '../utils/calculations';
+import { calculateStandings, calculateRankHistory, calculateStreak } from '../utils/calculations';
+import { Flame } from 'lucide-react';
 
 const ClassificationTab = ({ teams, scores }) => {
     const standings = calculateStandings(teams, scores);
     const rankHistory = calculateRankHistory(teams, scores);
+    const streakTeams = calculateStreak(teams, scores);
 
     return (
         <div className="space-y-8">
@@ -35,7 +37,17 @@ const ClassificationTab = ({ teams, scores }) => {
                                                 style={{ backgroundColor: team.color }}
                                             />
                                             <div>
-                                                <div className="font-bold text-gray-900 dark:text-white">{team.name}</div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="font-bold text-gray-900 dark:text-white">{team.name}</div>
+                                                    {streakTeams.has(team.id) && (
+                                                        <div className="group relative">
+                                                            <Flame className="w-4 h-4 text-orange-500 animate-pulse" />
+                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                                                                ¡En racha! Supera la media de las últimas 3 jornadas
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <div className="text-xs text-gray-500 dark:text-gray-400">{team.owner}</div>
                                             </div>
                                         </div>
@@ -89,7 +101,7 @@ const ClassificationTab = ({ teams, scores }) => {
                                     name={team.name}
                                     stroke={team.color}
                                     strokeWidth={3}
-                                    dot={{ r: 4, strokeWidth: 0 }}
+                                    dot={false}
                                     activeDot={{ r: 6, strokeWidth: 0 }}
                                 />
                             ))}

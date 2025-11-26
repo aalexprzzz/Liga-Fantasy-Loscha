@@ -101,7 +101,7 @@ const PredictionTab = ({ teams, scores }) => {
                 name={team.name}
                 stroke={team.color}
                 strokeWidth={3}
-                dot={{ r: 4, strokeWidth: 0 }}
+                dot={false}
                 activeDot={{ r: 6, strokeWidth: 0 }}
                 connectNulls={false} // Important: don't connect over nulls if we want gap, but here we want continuous look so we overlap
               />

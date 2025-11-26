@@ -44,7 +44,7 @@ const CumulativeTab = ({ teams, scores }) => {
                                 name={team.name}
                                 stroke={team.color}
                                 strokeWidth={3}
-                                dot={{ r: 4, strokeWidth: 0 }}
+                                dot={false}
                                 activeDot={{ r: 6, strokeWidth: 0 }}
                                 animationDuration={1500}
                             />
