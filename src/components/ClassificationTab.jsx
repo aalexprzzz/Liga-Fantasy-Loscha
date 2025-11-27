@@ -39,11 +39,19 @@ const ClassificationTab = ({ teams, scores }) => {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <div className="font-bold text-gray-900 dark:text-white">{team.name}</div>
-                                                    {streakTeams.has(team.id) && (
+                                                    {streakTeams.hot.has(team.id) && (
                                                         <div className="group relative">
                                                             <Flame className="w-4 h-4 text-orange-500 animate-pulse" />
                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
                                                                 ¡En racha! Supera la media de las últimas 3 jornadas
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {streakTeams.cold.has(team.id) && (
+                                                        <div className="group relative">
+                                                            <span className="text-lg leading-none select-none filter grayscale-[0.2] hover:grayscale-0 transition-all duration-300">🐴</span>
+                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                                                                Por debajo de la media de la liga en las últimas 3 jornadas
                                                             </div>
                                                         </div>
                                                     )}

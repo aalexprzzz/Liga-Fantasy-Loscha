@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator } from 'lucide-react';
+import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator, BarChart2 } from 'lucide-react';
 import ClassificationTab from './components/ClassificationTab';
 import CumulativeTab from './components/CumulativeTab';
 import PredictionTab from './components/PredictionTab';
 import PositionalTab from './components/PositionalTab';
 import CalculatorTab from './components/CalculatorTab';
+import StatisticsTab from './components/StatisticsTab';
 import AdminLogin from './components/AdminLogin';
 import AdminPanel from './components/AdminPanel';
 import { clsx } from 'clsx';
@@ -78,6 +79,7 @@ function App() {
     { id: 'positional', label: 'Puntos x Posición', icon: ListOrdered },
     { id: 'prediction', label: 'Predicción', icon: ChartIcon },
     { id: 'calculator', label: 'Calculadora', icon: Calculator },
+    { id: 'statistics', label: 'Estadísticas', icon: BarChart2 },
   ];
 
   // Pass data props to children instead of them importing LEAGUE_DATA
@@ -96,6 +98,8 @@ function App() {
         return <PredictionTab teams={teams} scores={scores} />;
       case 'calculator':
         return <CalculatorTab teams={teams} scores={scores} />;
+      case 'statistics':
+        return <StatisticsTab teams={teams} scores={scores} />;
       default:
         return null;
     }

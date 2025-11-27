@@ -158,9 +158,8 @@ export const calculatePositionalPoints = (teams, scores) => {
 
 export const calculateStreak = (teams, scores) => {
     // 1. Identify last 3 matchdays
-    // Assuming scores are sorted by matchday or we can extract unique matchdays and sort them
     const uniqueMatchdays = [...new Set(scores.map(s => s.id))];
-    // Sort matchdays numerically just in case
+    // Sort matchdays numerically
     uniqueMatchdays.sort((a, b) => {
         const numA = parseInt(a.replace(/\D/g, '')) || 0;
         const numB = parseInt(b.replace(/\D/g, '')) || 0;
@@ -168,9 +167,9 @@ export const calculateStreak = (teams, scores) => {
     });
 
     const last3Weeks = uniqueMatchdays.slice(-3);
-    if (last3Weeks.length === 0) return new Set();
+    if (last3Weeks.length < 3) return { hot: new Set(), cold: new Set() }; // Need at least 3 weeks
 
-    // 2. Calculate League Average for last 3 weeks
+    // 2. Calculate League Threshold (Average of ALL players in last 3 matchdays)
     let totalLeaguePoints = 0;
     let totalLeagueEntries = 0;
 
@@ -183,27 +182,31 @@ export const calculateStreak = (teams, scores) => {
         });
     });
 
-    const leagueAverage = totalLeagueEntries > 0 ? totalLeaguePoints / totalLeagueEntries : 0;
+    const leagueThreshold = totalLeagueEntries > 0 ? totalLeaguePoints / totalLeagueEntries : 0;
 
-    // 3. Calculate Team Average for last 3 weeks and compare
-    const streakTeams = new Set();
+    // 3. Evaluate each team individually
+    const streakTeams = {
+        hot: new Set(),
+        cold: new Set()
+    };
 
     teams.forEach(team => {
-        let teamTotal = 0;
-        let teamWeeks = 0;
-
-        relevantScores.forEach(week => {
-            if (week.scores[team.id] !== undefined) {
-                teamTotal += week.scores[team.id];
-                teamWeeks++;
-            }
+        // Get team's scores for the last 3 weeks
+        const teamScores = last3Weeks.map(weekId => {
+            const week = relevantScores.find(s => s.id === weekId);
+            return week && week.scores[team.id] !== undefined ? week.scores[team.id] : null;
         });
 
-        const teamAverage = teamWeeks > 0 ? teamTotal / teamWeeks : 0;
+        // Check if team played all 3 weeks
+        if (teamScores.every(score => score !== null)) {
+            const isHot = teamScores.every(score => score > leagueThreshold);
+            const isCold = teamScores.every(score => score < leagueThreshold);
 
-        // Condition: Team Average > League Average AND played at least 1 game in the last 3 weeks
-        if (teamWeeks > 0 && teamAverage > leagueAverage) {
-            streakTeams.add(team.id);
+            if (isHot) {
+                streakTeams.hot.add(team.id);
+            } else if (isCold) {
+                streakTeams.cold.add(team.id);
+            }
         }
     });
 
