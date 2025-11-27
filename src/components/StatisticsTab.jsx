@@ -18,9 +18,10 @@ import {
     User,
     Zap,
     Flame,
-    Watch, // Using Watch for Swiss Watch if available, or Clock
+    Watch,
     Clock,
-    Sigma // For deviation
+    Sigma,
+    Skull
 } from 'lucide-react';
 
 
@@ -164,6 +165,86 @@ const StatisticsTab = ({ teams, scores }) => {
             stableKing: stableKing.count === -1 ? { name: '-', count: 0 } : stableKing
         };
     }, [teams, scores]);
+
+    // --- Logic for Individual Stats ---
+    const individualStats = useMemo(() => {
+        if (!selectedTeamId) return null;
+
+        const teamScores = [];
+        scores.forEach(week => {
+            if (week.scores[selectedTeamId] !== undefined) {
+                teamScores.push({
+                    matchday: week.id,
+                    points: week.scores[selectedTeamId]
+                });
+            }
+        });
+
+        if (teamScores.length === 0) return null;
+
+        // 1. Personal Best
+        let best = { points: -Infinity, matchday: '-' };
+        // 2. Worst (excluding 0)
+        let worst = { points: Infinity, matchday: '-' };
+
+        // For Std Dev
+        const pointsArr = teamScores.map(s => s.points);
+
+        teamScores.forEach(s => {
+            if (s.points > best.points) best = s;
+            if (s.points > 0 && s.points < worst.points) worst = s;
+        });
+
+        if (worst.points === Infinity) worst = { points: 0, matchday: '-' };
+
+        // 3. Stability (Std Dev)
+        let stdDev = 0;
+        if (pointsArr.length >= 2) {
+            const mean = pointsArr.reduce((a, b) => a + b, 0) / pointsArr.length;
+            const variance = pointsArr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / pointsArr.length;
+            stdDev = Math.sqrt(variance);
+        }
+
+        // 4. Historical Streaks
+        let fireCount = 0;
+        let ponyCount = 0;
+
+        if (scores.length >= 3) {
+            for (let i = 2; i < scores.length; i++) {
+                const window = scores.slice(i - 2, i + 1); // [J(i-2), J(i-1), J(i)]
+
+                // Calculate League Threshold
+                let windowTotalPoints = 0;
+                let windowTotalEntries = 0;
+                window.forEach(w => {
+                    Object.values(w.scores).forEach(p => {
+                        windowTotalPoints += p;
+                        windowTotalEntries++;
+                    });
+                });
+                const leagueThreshold = windowTotalEntries > 0 ? windowTotalPoints / windowTotalEntries : 0;
+
+                // Check Selected Team
+                const teamWindowScores = window.map(w => w.scores[selectedTeamId]);
+                if (teamWindowScores.every(s => s !== undefined)) {
+                    const isHot = teamWindowScores.every(s => s > leagueThreshold);
+                    const isCold = teamWindowScores.every(s => s < leagueThreshold);
+
+                    if (isHot) fireCount++;
+                    if (isCold) ponyCount++;
+                }
+            }
+        }
+
+        return {
+            best,
+            worst,
+            stdDev: stdDev.toFixed(1),
+            fireCount,
+            ponyCount
+        };
+
+    }, [scores, selectedTeamId]);
 
     // --- Logic for Chart ---
     const chartData = useMemo(() => {
@@ -337,6 +418,70 @@ const StatisticsTab = ({ teams, scores }) => {
                     </div>
                 </div>
             </div>
+
+            {/* Individual Performance Cards - Only visible when team selected */}
+            {selectedTeamId && individualStats && (
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                    {/* Personal Best */}
+                    <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Mejor Jornada</p>
+                            <Trophy className="w-4 h-4 text-yellow-500" />
+                        </div>
+                        <div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">{individualStats.best.points} pts</span>
+                            <span className="text-xs text-gray-500 ml-1">({individualStats.best.matchday})</span>
+                        </div>
+                    </div>
+
+                    {/* Worst Matchday */}
+                    <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Peor Jornada</p>
+                            <Skull className="w-4 h-4 text-red-500" />
+                        </div>
+                        <div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">{individualStats.worst.points} pts</span>
+                            <span className="text-xs text-gray-500 ml-1">({individualStats.worst.matchday})</span>
+                        </div>
+                    </div>
+
+                    {/* Historical Fire */}
+                    <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Histórico 🔥</p>
+                            <Flame className="w-4 h-4 text-orange-500" />
+                        </div>
+                        <div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">{individualStats.fireCount}</span>
+                            <span className="text-xs text-gray-500 ml-1">veces</span>
+                        </div>
+                    </div>
+
+                    {/* Historical Pony */}
+                    <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Histórico 🐴</p>
+                            <ThumbsDown className="w-4 h-4 text-stone-500" />
+                        </div>
+                        <div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">{individualStats.ponyCount}</span>
+                            <span className="text-xs text-gray-500 ml-1">veces</span>
+                        </div>
+                    </div>
+
+                    {/* Stability */}
+                    <div className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm rounded-lg p-4 border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                        <div className="flex justify-between items-start mb-2">
+                            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Estabilidad</p>
+                            <Activity className="w-4 h-4 text-blue-500" />
+                        </div>
+                        <div>
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">±{individualStats.stdDev}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Chart Section */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
