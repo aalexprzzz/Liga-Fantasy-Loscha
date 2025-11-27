@@ -15,7 +15,12 @@ import {
     ThumbsDown,
     Activity,
     TrendingUp,
-    User
+    User,
+    Zap,
+    Flame,
+    Watch, // Using Watch for Swiss Watch if available, or Clock
+    Clock,
+    Sigma // For deviation
 } from 'lucide-react';
 
 
@@ -35,9 +40,14 @@ const StatisticsTab = ({ teams, scores }) => {
         let recentTotalPoints = 0;
         let recentTotalEntries = 0;
 
+        // Data structures for new metrics
+        const teamPointsHistory = {}; // { teamId: [p1, p2, ...] }
+        teams.forEach(t => teamPointsHistory[t.id] = []);
+
         scores.forEach(week => {
             Object.entries(week.scores).forEach(([teamId, points]) => {
-                const team = teams.find(t => t.id === parseInt(teamId));
+                const tId = parseInt(teamId);
+                const team = teams.find(t => t.id === tId);
                 const teamName = team ? team.name : 'Unknown';
 
                 // MVP
@@ -53,6 +63,11 @@ const StatisticsTab = ({ teams, scores }) => {
                 // Historical Average
                 totalPoints += points;
                 totalEntries++;
+
+                // Collect points for Std Dev
+                if (teamPointsHistory[tId]) {
+                    teamPointsHistory[tId].push(points);
+                }
             });
         });
 
@@ -63,11 +78,90 @@ const StatisticsTab = ({ teams, scores }) => {
             });
         });
 
+        // --- Standard Deviation Calculation ---
+        let swissWatch = { name: '-', stdDev: Infinity };
+        let rollerCoaster = { name: '-', stdDev: -Infinity };
+
+        Object.entries(teamPointsHistory).forEach(([teamId, pointsArr]) => {
+            if (pointsArr.length < 2) return; // Need at least 2 data points
+
+            const mean = pointsArr.reduce((a, b) => a + b, 0) / pointsArr.length;
+            const variance = pointsArr.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / pointsArr.length;
+            const stdDev = Math.sqrt(variance);
+
+            const team = teams.find(t => t.id === parseInt(teamId));
+            const name = team ? team.name : 'Unknown';
+
+            if (stdDev < swissWatch.stdDev) {
+                swissWatch = { name, stdDev };
+            }
+            if (stdDev > rollerCoaster.stdDev) {
+                rollerCoaster = { name, stdDev };
+            }
+        });
+
+        // --- Historical Streaks Calculation ---
+        // Iterate from J3 (index 2) to end
+        const streakCounts = {}; // { teamId: { hot: 0, cold: 0 } }
+        teams.forEach(t => streakCounts[t.id] = { hot: 0, cold: 0 });
+
+        // Ensure scores are sorted by matchday (they should be from App.jsx)
+        // We need at least 3 matchdays to start checking streaks
+        if (scores.length >= 3) {
+            for (let i = 2; i < scores.length; i++) {
+                const window = scores.slice(i - 2, i + 1); // [J(i-2), J(i-1), J(i)]
+
+                // Calculate League Threshold for this window
+                let windowTotalPoints = 0;
+                let windowTotalEntries = 0;
+                window.forEach(w => {
+                    Object.values(w.scores).forEach(p => {
+                        windowTotalPoints += p;
+                        windowTotalEntries++;
+                    });
+                });
+                const leagueThreshold = windowTotalEntries > 0 ? windowTotalPoints / windowTotalEntries : 0;
+
+                // Check each team
+                teams.forEach(team => {
+                    const teamScores = window.map(w => w.scores[team.id]);
+                    // Only count if played all 3
+                    if (teamScores.every(s => s !== undefined)) {
+                        const isHot = teamScores.every(s => s > leagueThreshold);
+                        const isCold = teamScores.every(s => s < leagueThreshold);
+
+                        if (isHot) streakCounts[team.id].hot++;
+                        if (isCold) streakCounts[team.id].cold++;
+                    }
+                });
+            }
+        }
+
+        let humanTorch = { name: '-', count: -1 };
+        let stableKing = { name: '-', count: -1 };
+
+        Object.entries(streakCounts).forEach(([teamId, counts]) => {
+            const team = teams.find(t => t.id === parseInt(teamId));
+            const name = team ? team.name : 'Unknown';
+
+            if (counts.hot > humanTorch.count) {
+                humanTorch = { name, count: counts.hot };
+            }
+            if (counts.cold > stableKing.count) {
+                stableKing = { name, count: counts.cold };
+            }
+        });
+
+
         return {
             mvp: mvp.points === -Infinity ? { name: '-', points: 0, matchday: '-' } : mvp,
             farolillo: farolillo.points === Infinity ? { name: '-', points: 0, matchday: '-' } : farolillo,
             historicalAvg: totalEntries > 0 ? (totalPoints / totalEntries).toFixed(1) : 0,
-            recentAvg: recentTotalEntries > 0 ? (recentTotalPoints / recentTotalEntries).toFixed(1) : 0
+            recentAvg: recentTotalEntries > 0 ? (recentTotalPoints / recentTotalEntries).toFixed(1) : 0,
+            swissWatch: swissWatch.stdDev === Infinity ? { name: '-', stdDev: 0 } : { ...swissWatch, stdDev: swissWatch.stdDev.toFixed(2) },
+            rollerCoaster: rollerCoaster.stdDev === -Infinity ? { name: '-', stdDev: 0 } : { ...rollerCoaster, stdDev: rollerCoaster.stdDev.toFixed(2) },
+            humanTorch: humanTorch.count === -1 ? { name: '-', count: 0 } : humanTorch,
+            stableKing: stableKing.count === -1 ? { name: '-', count: 0 } : stableKing
         };
     }, [teams, scores]);
 
@@ -170,6 +264,76 @@ const StatisticsTab = ({ teams, scores }) => {
                     </div>
                     <div className="text-sm text-gray-500 dark:text-gray-400">
                         Últimas 3 jornadas
+                    </div>
+                </div>
+
+                {/* --- New Cards --- */}
+
+                {/* El Reloj Suizo (Min Std Dev) */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">El Reloj Suizo 🇨🇭</p>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">±{stats.swissWatch.stdDev}</h3>
+                        </div>
+                        <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                            <Clock className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+                        </div>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                        <span className="font-semibold">{stats.swissWatch.name}</span>
+                        <div className="text-xs text-gray-500 mt-1">El más fiable</div>
+                    </div>
+                </div>
+
+                {/* La Montaña Rusa (Max Std Dev) */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">La Montaña Rusa 🎢</p>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">±{stats.rollerCoaster.stdDev}</h3>
+                        </div>
+                        <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                            <Activity className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                        </div>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                        <span className="font-semibold">{stats.rollerCoaster.name}</span>
+                        <div className="text-xs text-gray-500 mt-1">Pura adrenalina</div>
+                    </div>
+                </div>
+
+                {/* La Antorcha Humana (Max Hot Streaks) */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">La Antorcha Humana 🔥</p>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stats.humanTorch.count}</h3>
+                        </div>
+                        <div className="p-2 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
+                            <Flame className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                        </div>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                        <span className="font-semibold">{stats.humanTorch.name}</span>
+                        <div className="text-xs text-gray-500 mt-1">Rachas de fuego</div>
+                    </div>
+                </div>
+
+                {/* El Rey del Establo (Max Cold Streaks) */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm border border-gray-200 dark:border-gray-700 flex flex-col justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">El Rey del Establo 🐴</p>
+                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stats.stableKing.count}</h3>
+                        </div>
+                        <div className="p-2 bg-stone-100 dark:bg-stone-800 rounded-lg">
+                            <ThumbsDown className="w-6 h-6 text-stone-600 dark:text-stone-400" />
+                        </div>
+                    </div>
+                    <div className="text-sm text-gray-600 dark:text-gray-300">
+                        <span className="font-semibold">{stats.stableKing.name}</span>
+                        <div className="text-xs text-gray-500 mt-1">Rachas negativas</div>
                     </div>
                 </div>
             </div>
