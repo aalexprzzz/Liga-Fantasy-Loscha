@@ -2,8 +2,6 @@
 import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { calculateStandings, calculateRankHistory, calculateStreak } from '../utils/calculations';
-import { Flame } from 'lucide-react';
-
 const ClassificationTab = ({ teams, scores }) => {
     const standings = calculateStandings(teams, scores);
     const rankHistory = calculateRankHistory(teams, scores);
@@ -38,25 +36,35 @@ const ClassificationTab = ({ teams, scores }) => {
                                             />
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <div className="font-bold text-gray-900 dark:text-white">{team.name}</div>
-                                                    {streakTeams.hot.has(team.id) && (
-                                                        <div className="group relative">
-                                                            <Flame className="w-4 h-4 text-orange-500 animate-pulse" />
+                                                    <div className={`font-bold ${team.isInactive ? 'text-gray-400 dark:text-gray-500 opacity-60' : 'text-gray-900 dark:text-white'}`}>
+                                                        {team.name}
+                                                    </div>
+                                                    {team.isInactive && (
+                                                        <div className="group relative cursor-help flex items-center">
+                                                            <span className="text-lg leading-none">🌈</span>
+                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
+                                                                Este jugador parece inactivo (0 pts en las últimas 3 jornadas)
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {!team.isInactive && streakTeams.hot.has(team.id) && (
+                                                        <div className="group relative flex items-center">
+                                                            <span className="text-lg leading-none">🔥</span>
                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
                                                                 ¡En racha! Supera la media de las últimas 3 jornadas
                                                             </div>
                                                         </div>
                                                     )}
-                                                    {streakTeams.cold.has(team.id) && (
-                                                        <div className="group relative">
-                                                            <span className="text-lg leading-none select-none filter grayscale-[0.2] hover:grayscale-0 transition-all duration-300">🐴</span>
+                                                    {!team.isInactive && streakTeams.cold.has(team.id) && (
+                                                        <div className="group relative flex items-center">
+                                                            <span className="text-lg leading-none">🐴</span>
                                                             <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
                                                                 Por debajo de la media de la liga en las últimas 3 jornadas
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="text-xs text-gray-500 dark:text-gray-400">{team.owner}</div>
+                                                <div className={`text-xs ${team.isInactive ? 'text-gray-400 dark:text-gray-600 opacity-60' : 'text-gray-500 dark:text-gray-400'}`}>{team.owner}</div>
                                             </div>
                                         </div>
                                     </td>

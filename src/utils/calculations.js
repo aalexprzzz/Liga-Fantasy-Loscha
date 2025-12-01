@@ -1,21 +1,55 @@
 // Calculations now accept data as arguments instead of importing static LEAGUE_DATA
 
+const getSortedMatchdays = (scores) => {
+    const uniqueMatchdays = [...new Set(scores.map(s => s.id))];
+    return uniqueMatchdays.sort((a, b) => {
+        const numA = parseInt(a.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.replace(/\D/g, '')) || 0;
+        return numA - numB;
+    });
+};
+
+const identifyInactiveTeams = (teams, scores) => {
+    const sortedMatchdays = getSortedMatchdays(scores);
+    const last3Weeks = sortedMatchdays.slice(-3);
+    const inactiveTeams = new Set();
+
+    if (last3Weeks.length < 3) return inactiveTeams;
+
+    teams.forEach(team => {
+        // Get scores for the last 3 weeks
+        const recentScores = last3Weeks.map(weekId => {
+            const week = scores.find(s => s.id === weekId);
+            return week && week.scores[team.id] !== undefined ? week.scores[team.id] : null;
+        });
+
+        // Check if all 3 scores exist and are 0
+        // "Si un equipo tiene 0 puntos en sus últimas 3 jornadas consecutivas"
+        // We assume "disputadas" means the matchdays exist in the system.
+        // If a player didn't play (undefined), is that 0? Usually in fantasy 0 points is explicit.
+        // But if they are missing from the scores, it might be 0 too.
+        // Let's assume explicit 0 or missing (if missing counts as 0).
+        // However, usually "0 points" means they played and got 0 or didn't play and got 0.
+        // Let's treat undefined as 0 for inactivity check to be safe, or strictly 0.
+        // The prompt says "0 puntos".
+
+        const isInactive = recentScores.every(score => score === 0);
+        if (isInactive) {
+            inactiveTeams.add(team.id);
+        }
+    });
+
+    return inactiveTeams;
+};
+
 export const calculateStandings = (teams, scores) => {
+    const inactiveTeams = identifyInactiveTeams(teams, scores);
+
     const teamStats = teams.map((team) => {
         let totalPoints = 0;
         let weeksPlayed = 0;
 
         scores.forEach((week) => {
-            // Check if this team has a score in this week
-            // Structure of 'scores' from DB might be different, we need to adapt.
-            // Assuming 'scores' passed here is already processed into { id: 'J1', scores: { teamId: points } } format
-            // OR we adapt the function to handle flat list of scores from DB.
-            // Let's assume we transform DB data to the old structure for compatibility first, 
-            // or better, rewrite this to handle the flat list if that's what we pass.
-
-            // Actually, let's keep the component logic simple and pass the data in the format it expects.
-            // So 'scores' here is expected to be [ { id: 'J1', scores: { 1: 50, 2: 60 } } ]
-
             if (week.scores[team.id] !== undefined) {
                 totalPoints += week.scores[team.id];
                 weeksPlayed++;
@@ -26,6 +60,7 @@ export const calculateStandings = (teams, scores) => {
             ...team,
             totalPoints,
             average: weeksPlayed > 0 ? (totalPoints / weeksPlayed).toFixed(2) : 0,
+            isInactive: inactiveTeams.has(team.id)
         };
     });
 
@@ -158,27 +193,36 @@ export const calculatePositionalPoints = (teams, scores) => {
 
 export const calculateStreak = (teams, scores) => {
     // 1. Identify last 3 matchdays
-    const uniqueMatchdays = [...new Set(scores.map(s => s.id))];
-    // Sort matchdays numerically
-    uniqueMatchdays.sort((a, b) => {
-        const numA = parseInt(a.replace(/\D/g, '')) || 0;
-        const numB = parseInt(b.replace(/\D/g, '')) || 0;
-        return numA - numB;
-    });
+    const sortedMatchdays = getSortedMatchdays(scores);
+    const last3Weeks = sortedMatchdays.slice(-3);
 
-    const last3Weeks = uniqueMatchdays.slice(-3);
     if (last3Weeks.length < 3) return { hot: new Set(), cold: new Set() }; // Need at least 3 weeks
 
-    // 2. Calculate League Threshold (Average of ALL players in last 3 matchdays)
+    // Identify inactive teams to exclude from league threshold
+    const inactiveTeams = identifyInactiveTeams(teams, scores);
+
+    // 2. Calculate League Threshold (Average of ALL ACTIVE players in last 3 matchdays)
     let totalLeaguePoints = 0;
     let totalLeagueEntries = 0;
 
     const relevantScores = scores.filter(s => last3Weeks.includes(s.id));
 
     relevantScores.forEach(week => {
-        Object.values(week.scores).forEach(points => {
-            totalLeaguePoints += points;
-            totalLeagueEntries++;
+        Object.entries(week.scores).forEach(([teamId, points]) => {
+            // Only include if team is NOT inactive
+            // Note: teamId from Object.entries is a string, but team.id might be number or string.
+            // We should ensure type consistency. usually keys are strings.
+            // Let's assume loose comparison or string conversion.
+            // inactiveTeams stores team.id.
+
+            // Check if this teamId corresponds to an inactive team
+            // We need to match the ID type.
+            const isInactive = [...inactiveTeams].some(id => String(id) === String(teamId));
+
+            if (!isInactive) {
+                totalLeaguePoints += points;
+                totalLeagueEntries++;
+            }
         });
     });
 
@@ -191,6 +235,13 @@ export const calculateStreak = (teams, scores) => {
     };
 
     teams.forEach(team => {
+        // Skip streak calculation for inactive teams? 
+        // The prompt doesn't explicitly say to disable streaks for inactive players, 
+        // but it makes sense since they have 0 points, they would be "cold" otherwise.
+        // However, if they are inactive, they get the Rainbow, so maybe we shouldn't show Pony/Fire.
+        // Let's exclude them from streaks to avoid clutter.
+        if (inactiveTeams.has(team.id)) return;
+
         // Get team's scores for the last 3 weeks
         const teamScores = last3Weeks.map(weekId => {
             const week = relevantScores.find(s => s.id === weekId);
