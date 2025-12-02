@@ -1,6 +1,6 @@
 // Calculations now accept data as arguments instead of importing static LEAGUE_DATA
 
-const getSortedMatchdays = (scores) => {
+export const getSortedMatchdays = (scores) => {
     const uniqueMatchdays = [...new Set(scores.map(s => s.id))];
     return uniqueMatchdays.sort((a, b) => {
         const numA = parseInt(a.replace(/\D/g, '')) || 0;
@@ -9,7 +9,7 @@ const getSortedMatchdays = (scores) => {
     });
 };
 
-const identifyInactiveTeams = (teams, scores) => {
+export const identifyInactiveTeams = (teams, scores) => {
     const sortedMatchdays = getSortedMatchdays(scores);
     const last3Weeks = sortedMatchdays.slice(-3);
     const inactiveTeams = new Set();
@@ -196,67 +196,68 @@ export const calculateStreak = (teams, scores) => {
     const sortedMatchdays = getSortedMatchdays(scores);
     const last3Weeks = sortedMatchdays.slice(-3);
 
-    if (last3Weeks.length < 3) return { hot: new Set(), cold: new Set() }; // Need at least 3 weeks
+    if (last3Weeks.length < 3) return { hot: new Set(), cold: new Map() }; // Need at least 3 weeks
 
-    // Identify inactive teams to exclude from league threshold
+    // Identify inactive teams to exclude from calculations if needed, 
+    // but the new "Strict Average" logic handles exclusion by 0 points per matchday.
     const inactiveTeams = identifyInactiveTeams(teams, scores);
 
-    // 2. Calculate League Threshold (Average of ALL ACTIVE players in last 3 matchdays)
-    let totalLeaguePoints = 0;
-    let totalLeagueEntries = 0;
+    // 2. Calculate Strict Average for each of the last 3 matchdays
+    const matchdayAverages = {}; // { 'J1': 45.5, 'J2': ... }
 
-    const relevantScores = scores.filter(s => last3Weeks.includes(s.id));
+    last3Weeks.forEach(weekId => {
+        const week = scores.find(s => s.id === weekId);
+        if (!week) return;
 
-    relevantScores.forEach(week => {
-        Object.entries(week.scores).forEach(([teamId, points]) => {
-            // Only include if team is NOT inactive
-            // Note: teamId from Object.entries is a string, but team.id might be number or string.
-            // We should ensure type consistency. usually keys are strings.
-            // Let's assume loose comparison or string conversion.
-            // inactiveTeams stores team.id.
+        let totalPoints = 0;
+        let activeCount = 0;
 
-            // Check if this teamId corresponds to an inactive team
-            // We need to match the ID type.
-            const isInactive = [...inactiveTeams].some(id => String(id) === String(teamId));
-
-            if (!isInactive) {
-                totalLeaguePoints += points;
-                totalLeagueEntries++;
+        Object.values(week.scores).forEach(points => {
+            if (points > 0) { // Strict: Exclude 0s
+                totalPoints += points;
+                activeCount++;
             }
         });
+
+        matchdayAverages[weekId] = activeCount > 0 ? totalPoints / activeCount : 0;
     });
 
-    const leagueThreshold = totalLeagueEntries > 0 ? totalLeaguePoints / totalLeagueEntries : 0;
-
-    // 3. Evaluate each team individually
+    // 3. Evaluate each team
     const streakTeams = {
         hot: new Set(),
-        cold: new Set()
+        cold: new Map() // Changed to Map to store tooltip string
     };
 
     teams.forEach(team => {
-        // Skip streak calculation for inactive teams? 
-        // The prompt doesn't explicitly say to disable streaks for inactive players, 
-        // but it makes sense since they have 0 points, they would be "cold" otherwise.
-        // However, if they are inactive, they get the Rainbow, so maybe we shouldn't show Pony/Fire.
-        // Let's exclude them from streaks to avoid clutter.
         if (inactiveTeams.has(team.id)) return;
 
         // Get team's scores for the last 3 weeks
         const teamScores = last3Weeks.map(weekId => {
-            const week = relevantScores.find(s => s.id === weekId);
-            return week && week.scores[team.id] !== undefined ? week.scores[team.id] : null;
+            const week = scores.find(s => s.id === weekId);
+            return {
+                id: weekId,
+                points: week && week.scores[team.id] !== undefined ? week.scores[team.id] : null,
+                avg: matchdayAverages[weekId] || 0
+            };
         });
 
-        // Check if team played all 3 weeks
-        if (teamScores.every(score => score !== null)) {
-            const isHot = teamScores.every(score => score > leagueThreshold);
-            const isCold = teamScores.every(score => score < leagueThreshold);
+        // Check if team played all 3 weeks (no nulls)
+        if (teamScores.every(s => s.points !== null)) {
+            // Hot Logic: All 3 scores > Average (using the same strict average for consistency, or keep old logic?)
+            // User didn't explicitly ask to change Hot logic, but using strict average makes sense.
+            // Let's keep it simple and consistent.
+            const isHot = teamScores.every(s => s.points > s.avg);
+
+            // Cold Logic: All 3 scores < Average
+            const isCold = teamScores.every(s => s.points < s.avg);
 
             if (isHot) {
                 streakTeams.hot.add(team.id);
             } else if (isCold) {
-                streakTeams.cold.add(team.id);
+                // Generate Debug Tooltip
+                // Format: 'Pony: J10(20<45) | J11(15<40) | J12(10<42)'
+                const tooltip = `Pony: ${teamScores.map(s => `${s.id}(${s.points}<${s.avg.toFixed(1)})`).join(' | ')}`;
+                streakTeams.cold.set(team.id, tooltip);
             }
         }
     });
