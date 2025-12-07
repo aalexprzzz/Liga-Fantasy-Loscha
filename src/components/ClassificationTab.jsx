@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { calculateStandings, calculateRankHistory, calculateStreak, getSortedMatchdays, identifyInactiveTeams } from '../utils/calculations';
 import { Filter, Calculator } from 'lucide-react';
+import { IconFireOrange, IconFirePurple, IconFireBlue, IconFireGreen } from './Icons';
 
 const ClassificationTab = ({ teams, scores }) => {
     const [selectedMatchday, setSelectedMatchday] = useState('general');
@@ -72,6 +73,56 @@ const ClassificationTab = ({ teams, scores }) => {
 
         return activeCount > 0 ? (totalPoints / activeCount).toFixed(1) : 0;
     }, [selectedMatchday, scores, teams, matchdays]);
+
+    const renderStreakIcon = (teamId) => {
+        const streak = streakTeams.get(teamId);
+        if (!streak) return null;
+
+        if (streak.type === 'inactive') {
+            return (
+                <div className="group relative cursor-help flex items-center">
+                    <span className="text-2xl">🌈</span>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
+                        {streak.tooltip}
+                    </div>
+                </div>
+            );
+        }
+
+        if (streak.type === 'cold') {
+            return (
+                <div className="group relative flex items-center">
+                    <span className="text-2xl">🐴</span>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-nowrap">
+                        {streak.tooltip}
+                    </div>
+                </div>
+            );
+        }
+
+        if (streak.type === 'hot') {
+            let FireIcon = IconFireOrange;
+
+            if (streak.count >= 12) {
+                FireIcon = IconFireGreen;
+            } else if (streak.count >= 9) {
+                FireIcon = IconFireBlue;
+            } else if (streak.count >= 6) {
+                FireIcon = IconFirePurple;
+            }
+
+            return (
+                <div className="group relative flex items-center">
+                    <FireIcon />
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                        {streak.tooltip}
+                    </div>
+                </div>
+            );
+        }
+
+        return null;
+    };
 
     return (
         <div className="space-y-8">
@@ -162,32 +213,10 @@ const ClassificationTab = ({ teams, scores }) => {
                                                     <div className={`font-bold ${team.isInactive ? 'text-gray-400 dark:text-gray-500 opacity-60' : 'text-gray-900 dark:text-white'}`}>
                                                         {team.name}
                                                     </div>
-                                                    {/* Show badges only in General view or if relevant */}
-                                                    {(selectedMatchday === 'general' || team.isInactive) && team.isInactive && (
-                                                        <div className="group relative cursor-help flex items-center">
-                                                            <span className="text-lg leading-none">🌈</span>
-                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
-                                                                Este jugador parece inactivo (0 pts en las últimas 3 jornadas)
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {/* Streaks only shown in General view as they are context-dependent on recent history */}
-                                                    {selectedMatchday === 'general' && !team.isInactive && streakTeams.hot.has(team.id) && (
-                                                        <div className="group relative flex items-center">
-                                                            <span className="text-lg leading-none">🔥</span>
-                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                                                                ¡En racha! Supera la media de las últimas 3 jornadas
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    {selectedMatchday === 'general' && !team.isInactive && streakTeams.cold.has(team.id) && (
-                                                        <div className="group relative flex items-center">
-                                                            <span className="text-lg leading-none">🐴</span>
-                                                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-nowrap">
-                                                                {streakTeams.cold.get(team.id)}
-                                                            </div>
-                                                        </div>
-                                                    )}
+
+                                                    {/* Streak Icons */}
+                                                    {selectedMatchday === 'general' && renderStreakIcon(team.id)}
+
                                                 </div>
                                                 <div className={`text-xs ${team.isInactive ? 'text-gray-400 dark:text-gray-600 opacity-60' : 'text-gray-500 dark:text-gray-400'}`}>{team.owner}</div>
                                             </div>

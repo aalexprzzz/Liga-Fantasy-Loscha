@@ -11,28 +11,20 @@ export const getSortedMatchdays = (scores) => {
 
 export const identifyInactiveTeams = (teams, scores) => {
     const sortedMatchdays = getSortedMatchdays(scores);
-    const last3Weeks = sortedMatchdays.slice(-3);
+    const last2Weeks = sortedMatchdays.slice(-2);
     const inactiveTeams = new Set();
 
-    if (last3Weeks.length < 3) return inactiveTeams;
+    if (last2Weeks.length < 2) return inactiveTeams;
 
     teams.forEach(team => {
-        // Get scores for the last 3 weeks
-        const recentScores = last3Weeks.map(weekId => {
+        // Get scores for the last 2 weeks
+        const recentScores = last2Weeks.map(weekId => {
             const week = scores.find(s => s.id === weekId);
             return week && week.scores[team.id] !== undefined ? week.scores[team.id] : null;
         });
 
-        // Check if all 3 scores exist and are 0
-        // "Si un equipo tiene 0 puntos en sus últimas 3 jornadas consecutivas"
-        // We assume "disputadas" means the matchdays exist in the system.
-        // If a player didn't play (undefined), is that 0? Usually in fantasy 0 points is explicit.
-        // But if they are missing from the scores, it might be 0 too.
-        // Let's assume explicit 0 or missing (if missing counts as 0).
-        // However, usually "0 points" means they played and got 0 or didn't play and got 0.
-        // Let's treat undefined as 0 for inactivity check to be safe, or strictly 0.
-        // The prompt says "0 puntos".
-
+        // Check if all 2 scores exist and are 0
+        // "Si un equipo tiene 0 puntos en sus últimas 2 jornadas consecutivas"
         const isInactive = recentScores.every(score => score === 0);
         if (isInactive) {
             inactiveTeams.add(team.id);
@@ -192,20 +184,20 @@ export const calculatePositionalPoints = (teams, scores) => {
 };
 
 export const calculateStreak = (teams, scores) => {
-    // 1. Identify last 3 matchdays
     const sortedMatchdays = getSortedMatchdays(scores);
-    const last3Weeks = sortedMatchdays.slice(-3);
+    // We need to look back as far as possible, so we don't slice just the last 3.
+    // However, for efficiency, maybe we don't need ALL history if the streak breaks, 
+    // but to find the *length* of the streak we need to go back until it breaks.
 
-    if (last3Weeks.length < 3) return { hot: new Set(), cold: new Map() }; // Need at least 3 weeks
+    if (sortedMatchdays.length < 3) return new Map(); // Need at least 3 weeks to start counting streaks
 
-    // Identify inactive teams to exclude from calculations if needed, 
-    // but the new "Strict Average" logic handles exclusion by 0 points per matchday.
     const inactiveTeams = identifyInactiveTeams(teams, scores);
 
-    // 2. Calculate Strict Average for each of the last 3 matchdays
-    const matchdayAverages = {}; // { 'J1': 45.5, 'J2': ... }
+    // 1. Calculate Average for ALL matchdays (or at least recent enough history)
+    // We'll calculate for all to be safe and simple.
+    const matchdayAverages = {};
 
-    last3Weeks.forEach(weekId => {
+    sortedMatchdays.forEach(weekId => {
         const week = scores.find(s => s.id === weekId);
         if (!week) return;
 
@@ -222,45 +214,80 @@ export const calculateStreak = (teams, scores) => {
         matchdayAverages[weekId] = activeCount > 0 ? totalPoints / activeCount : 0;
     });
 
-    // 3. Evaluate each team
-    const streakTeams = {
-        hot: new Set(),
-        cold: new Map() // Changed to Map to store tooltip string
-    };
+    // 2. Evaluate each team
+    const teamStreaks = new Map();
 
     teams.forEach(team => {
-        if (inactiveTeams.has(team.id)) return;
+        if (inactiveTeams.has(team.id)) {
+            teamStreaks.set(team.id, { type: 'inactive', count: 0, tooltip: 'Inactivo: 0 puntos en las últimas 2 jornadas' });
+            return;
+        }
 
-        // Get team's scores for the last 3 weeks
-        const teamScores = last3Weeks.map(weekId => {
+        // We iterate backwards from the most recent matchday
+        let hotStreak = 0;
+        let coldStreak = 0;
+        let currentStreakType = null; // 'hot' or 'cold' or null
+        let streakBroken = false;
+        let debugHistory = [];
+
+        // We check from the last matchday backwards
+        for (let i = sortedMatchdays.length - 1; i >= 0; i--) {
+            const weekId = sortedMatchdays[i];
             const week = scores.find(s => s.id === weekId);
-            return {
-                id: weekId,
-                points: week && week.scores[team.id] !== undefined ? week.scores[team.id] : null,
-                avg: matchdayAverages[weekId] || 0
-            };
-        });
+            const points = week && week.scores[team.id] !== undefined ? week.scores[team.id] : 0; // Treat undefined as 0 for streak calculation if needed, or skip? 
+            // If points is 0 and they played, it breaks hot streak. If they didn't play... 
+            // Let's assume points are reliable.
 
-        // Check if team played all 3 weeks (no nulls)
-        if (teamScores.every(s => s.points !== null)) {
-            // Hot Logic: All 3 scores > Average (using the same strict average for consistency, or keep old logic?)
-            // User didn't explicitly ask to change Hot logic, but using strict average makes sense.
-            // Let's keep it simple and consistent.
-            const isHot = teamScores.every(s => s.points > s.avg);
+            const avg = matchdayAverages[weekId] || 0;
 
-            // Cold Logic: All 3 scores < Average
-            const isCold = teamScores.every(s => s.points < s.avg);
+            if (streakBroken) break;
 
-            if (isHot) {
-                streakTeams.hot.add(team.id);
-            } else if (isCold) {
-                // Generate Debug Tooltip
-                // Format: 'Pony: J10(20<45) | J11(15<40) | J12(10<42)'
-                const tooltip = `Pony: ${teamScores.map(s => `${s.id}(${s.points}<${s.avg.toFixed(1)})`).join(' | ')}`;
-                streakTeams.cold.set(team.id, tooltip);
+            if (currentStreakType === null) {
+                // Determine the type of streak based on the LATEST matchday
+                if (points > avg) {
+                    currentStreakType = 'hot';
+                    hotStreak++;
+                } else if (points < avg) {
+                    currentStreakType = 'cold';
+                    coldStreak++;
+                    debugHistory.push(`${weekId}(${points}<${avg.toFixed(1)})`);
+                } else {
+                    // Exactly average? Breaks everything?
+                    streakBroken = true;
+                }
+            } else if (currentStreakType === 'hot') {
+                if (points > avg) {
+                    hotStreak++;
+                } else {
+                    streakBroken = true;
+                }
+            } else if (currentStreakType === 'cold') {
+                if (points < avg) {
+                    coldStreak++;
+                    debugHistory.push(`${weekId}(${points}<${avg.toFixed(1)})`);
+                } else {
+                    streakBroken = true;
+                }
             }
+        }
+
+        // Determine final status
+        if (currentStreakType === 'hot' && hotStreak >= 3) {
+            teamStreaks.set(team.id, {
+                type: 'hot',
+                count: hotStreak,
+                tooltip: `¡En racha! ${hotStreak} jornadas consecutivas por encima de la media`
+            });
+        } else if (currentStreakType === 'cold' && coldStreak >= 3) {
+            teamStreaks.set(team.id, {
+                type: 'cold',
+                count: coldStreak,
+                tooltip: `Racha mala: ${debugHistory.slice(0, 3).join(' | ')}...`
+            });
+        } else {
+            teamStreaks.set(team.id, { type: null, count: 0, tooltip: '' });
         }
     });
 
-    return streakTeams;
+    return teamStreaks;
 };
