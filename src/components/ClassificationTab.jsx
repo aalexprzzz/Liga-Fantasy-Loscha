@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { calculateStandings, calculateRankHistory, calculateStreak, getSortedMatchdays, identifyInactiveTeams } from '../utils/calculations';
+import { calculateStandings, calculateRankHistory, calculateStreak, getSortedMatchdays, identifyInactiveTeams, calculatePositionalPoints } from '../utils/calculations';
 import { Filter, Calculator } from 'lucide-react';
 import { IconFireOrange, IconFirePurple, IconFireBlue, IconFireGreen } from './Icons';
 
 const ClassificationTab = ({ teams, scores }) => {
     const [selectedMatchday, setSelectedMatchday] = useState('general');
+    const [viewMode, setViewMode] = useState('standard'); // 'standard' or 'positional'
 
     // Get all available matchdays sorted
     const matchdays = useMemo(() => getSortedMatchdays(scores), [scores]);
@@ -14,6 +15,9 @@ const ClassificationTab = ({ teams, scores }) => {
     // Calculate data based on selection
     const displayData = useMemo(() => {
         if (selectedMatchday === 'general') {
+            if (viewMode === 'positional') {
+                return calculatePositionalPoints(teams, scores);
+            }
             return calculateStandings(teams, scores);
         } else {
             // Filter scores for the selected matchday
@@ -34,7 +38,7 @@ const ClassificationTab = ({ teams, scores }) => {
             // Sort by points descending
             return matchdayStandings.sort((a, b) => b.totalPoints - a.totalPoints);
         }
-    }, [teams, scores, selectedMatchday]);
+    }, [teams, scores, selectedMatchday, viewMode]);
 
     const rankHistory = useMemo(() => calculateRankHistory(teams, scores), [teams, scores]);
     const streakTeams = useMemo(() => calculateStreak(teams, scores), [teams, scores]);
@@ -151,6 +155,20 @@ const ClassificationTab = ({ teams, scores }) => {
                     </div>
                 </div>
 
+                {/* View Toggle (Standard vs Positional) - Only in General View */}
+                {selectedMatchday === 'general' && (
+                    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 flex items-center gap-4 w-full md:w-auto">
+                        <div className="flex items-center cursor-pointer" onClick={() => setViewMode(prev => prev === 'standard' ? 'positional' : 'standard')}>
+                            <div className={`w-12 h-6 flex items-center bg-gray-300 dark:bg-gray-700 rounded-full p-1 duration-300 ease-in-out ${viewMode === 'positional' ? 'bg-indigo-500 dark:bg-indigo-600' : ''}`}>
+                                <div className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-300 ease-in-out ${viewMode === 'positional' ? 'translate-x-6' : ''}`}></div>
+                            </div>
+                            <span className="ml-3 text-sm font-medium text-gray-700 dark:text-gray-300">
+                                {viewMode === 'standard' ? 'Ver Puntos Clasificación' : 'Ver Puntos Reales'}
+                            </span>
+                        </div>
+                    </div>
+                )}
+
                 {/* Matchday Average Card */}
                 {selectedMatchday !== 'general' && (
                     <div className="flex-1 w-full md:w-auto animate-in fade-in slide-in-from-right-4 duration-300">
@@ -178,11 +196,18 @@ const ClassificationTab = ({ teams, scores }) => {
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg overflow-hidden border border-gray-100 dark:border-gray-700 transition-all duration-300">
                 <div className="p-6 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
                     <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-                        {selectedMatchday === 'general' ? 'Clasificación General' : `Clasificación - ${selectedMatchday}`}
+                        {selectedMatchday === 'general'
+                            ? (viewMode === 'positional' ? 'Clasificación por Puntos de Posición' : 'Clasificación General')
+                            : `Clasificación - ${selectedMatchday}`}
                     </h2>
                     {selectedMatchday !== 'general' && (
                         <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-full">
                             Vista Jornada
+                        </span>
+                    )}
+                    {selectedMatchday === 'general' && viewMode === 'positional' && (
+                        <span className="px-3 py-1 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-bold rounded-full">
+                            Puntos Alternativos
                         </span>
                     )}
                 </div>
@@ -192,10 +217,12 @@ const ClassificationTab = ({ teams, scores }) => {
                             <tr className="bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 text-sm uppercase tracking-wider">
                                 <th className="px-6 py-4 font-semibold">Pos</th>
                                 <th className="px-6 py-4 font-semibold">Equipo</th>
-                                {selectedMatchday === 'general' && (
+                                {selectedMatchday === 'general' && viewMode === 'standard' && (
                                     <th className="px-6 py-4 font-semibold text-right">Media</th>
                                 )}
-                                <th className="px-6 py-4 font-semibold text-right">Puntos</th>
+                                <th className="px-6 py-4 font-semibold text-right">
+                                    {viewMode === 'positional' && selectedMatchday === 'general' ? 'Pts. Posición' : 'Puntos'}
+                                </th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -214,7 +241,7 @@ const ClassificationTab = ({ teams, scores }) => {
                                                         {team.name}
                                                     </div>
 
-                                                    {/* Streak Icons */}
+                                                    {/* Streak Icons - Only show in standard general view, or maybe in both? User didn't specify, but safer to show in both or just standard. Let's show in both for consistency, or just standard if positional is 'purely' alternative. Let's keep it in both. */}
                                                     {selectedMatchday === 'general' && renderStreakIcon(team.id)}
 
                                                 </div>
@@ -222,10 +249,12 @@ const ClassificationTab = ({ teams, scores }) => {
                                             </div>
                                         </div>
                                     </td>
-                                    {selectedMatchday === 'general' && (
+                                    {selectedMatchday === 'general' && viewMode === 'standard' && (
                                         <td className="px-6 py-4 text-right text-gray-600 dark:text-gray-300 font-mono">{team.average}</td>
                                     )}
-                                    <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white font-mono text-lg">{team.totalPoints}</td>
+                                    <td className="px-6 py-4 text-right font-bold text-gray-900 dark:text-white font-mono text-lg">
+                                        {viewMode === 'positional' && selectedMatchday === 'general' ? team.positionalPoints : team.totalPoints}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

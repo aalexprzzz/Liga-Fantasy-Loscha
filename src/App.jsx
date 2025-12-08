@@ -3,7 +3,6 @@ import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator, Ba
 import ClassificationTab from './components/ClassificationTab';
 import CumulativeTab from './components/CumulativeTab';
 import PredictionTab from './components/PredictionTab';
-import PositionalTab from './components/PositionalTab';
 import CalculatorTab from './components/CalculatorTab';
 import StatisticsTab from './components/StatisticsTab';
 import AdminLogin from './components/AdminLogin';
@@ -76,7 +75,6 @@ function App() {
   const tabs = [
     { id: 'classification', label: 'Clasificación', icon: Trophy },
     { id: 'cumulative', label: 'Acumulado', icon: TrendingUp },
-    { id: 'positional', label: 'Puntos x Posición', icon: ListOrdered },
     { id: 'prediction', label: 'Predicción', icon: ChartIcon },
     { id: 'calculator', label: 'Calculadora', icon: Calculator },
     { id: 'statistics', label: 'Estadísticas', icon: BarChart2 },
@@ -92,8 +90,6 @@ function App() {
         return <ClassificationTab teams={teams} scores={scores} />;
       case 'cumulative':
         return <CumulativeTab teams={teams} scores={scores} />;
-      case 'positional':
-        return <PositionalTab teams={teams} scores={scores} />;
       case 'prediction':
         return <PredictionTab teams={teams} scores={scores} />;
       case 'calculator':

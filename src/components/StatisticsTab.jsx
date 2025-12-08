@@ -23,6 +23,7 @@ import {
     Sigma,
     Skull
 } from 'lucide-react';
+import { identifyInactiveTeams } from '../utils/calculations';
 
 
 const StatisticsTab = ({ teams, scores }) => {
@@ -30,6 +31,8 @@ const StatisticsTab = ({ teams, scores }) => {
 
     // --- Logic for Top Cards ---
     const stats = useMemo(() => {
+        const inactiveTeams = identifyInactiveTeams(teams, scores);
+
         let mvp = { name: '-', points: -Infinity, matchday: '-' };
         let farolillo = { name: '-', points: Infinity, matchday: '-' };
         let totalPoints = 0;
@@ -43,11 +46,19 @@ const StatisticsTab = ({ teams, scores }) => {
 
         // Data structures for new metrics
         const teamPointsHistory = {}; // { teamId: [p1, p2, ...] }
-        teams.forEach(t => teamPointsHistory[t.id] = []);
+        teams.forEach(t => {
+            if (!inactiveTeams.has(t.id)) {
+                teamPointsHistory[t.id] = [];
+            }
+        });
 
         scores.forEach(week => {
             Object.entries(week.scores).forEach(([teamId, points]) => {
                 const tId = parseInt(teamId);
+
+                // SKIP INACTIVE TEAMS
+                if (inactiveTeams.has(tId)) return;
+
                 const team = teams.find(t => t.id === tId);
                 const teamName = team ? team.name : 'Unknown';
 
@@ -73,7 +84,9 @@ const StatisticsTab = ({ teams, scores }) => {
         });
 
         last3Scores.forEach(week => {
-            Object.values(week.scores).forEach(points => {
+            Object.entries(week.scores).forEach(([teamId, points]) => {
+                const tId = parseInt(teamId);
+                if (inactiveTeams.has(tId)) return; // SKIP INACTIVE
                 recentTotalPoints += points;
                 recentTotalEntries++;
             });
@@ -104,7 +117,11 @@ const StatisticsTab = ({ teams, scores }) => {
         // --- Historical Streaks Calculation ---
         // Iterate from J3 (index 2) to end
         const streakCounts = {}; // { teamId: { hot: 0, cold: 0 } }
-        teams.forEach(t => streakCounts[t.id] = { hot: 0, cold: 0 });
+        teams.forEach(t => {
+            if (!inactiveTeams.has(t.id)) {
+                streakCounts[t.id] = { hot: 0, cold: 0 }
+            }
+        });
 
         // Ensure scores are sorted by matchday (they should be from App.jsx)
         // We need at least 3 matchdays to start checking streaks
@@ -116,15 +133,22 @@ const StatisticsTab = ({ teams, scores }) => {
                 let windowTotalPoints = 0;
                 let windowTotalEntries = 0;
                 window.forEach(w => {
-                    Object.values(w.scores).forEach(p => {
-                        windowTotalPoints += p;
-                        windowTotalEntries++;
+                    Object.entries(w.scores).forEach(([tId, p]) => {
+                        // SKIP INACTIVE in threshold calculation too? 
+                        // "excluye del array de datos a cualquier jugador que cumpla la condición de inactividad"
+                        // Yes, exclude them from average.
+                        if (!inactiveTeams.has(parseInt(tId))) {
+                            windowTotalPoints += p;
+                            windowTotalEntries++;
+                        }
                     });
                 });
                 const leagueThreshold = windowTotalEntries > 0 ? windowTotalPoints / windowTotalEntries : 0;
 
                 // Check each team
                 teams.forEach(team => {
+                    if (inactiveTeams.has(team.id)) return; // Skip inactive
+
                     const teamScores = window.map(w => w.scores[team.id]);
                     // Only count if played all 3
                     if (teamScores.every(s => s !== undefined)) {
