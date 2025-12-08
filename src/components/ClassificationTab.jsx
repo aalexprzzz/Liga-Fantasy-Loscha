@@ -4,13 +4,58 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { calculateStandings, calculateRankHistory, calculateStreak, getSortedMatchdays, identifyInactiveTeams, calculatePositionalPoints } from '../utils/calculations';
 import { Filter, Calculator } from 'lucide-react';
 import { IconFireOrange, IconFirePurple, IconFireBlue, IconFireGreen } from './Icons';
+import { Skull } from 'lucide-react';
 
-const ClassificationTab = ({ teams, scores }) => {
+const ClassificationTab = ({ teams, scores, matchups = [] }) => {
     const [selectedMatchday, setSelectedMatchday] = useState('general');
     const [viewMode, setViewMode] = useState('standard'); // 'standard' or 'positional'
 
     // Get all available matchdays sorted
     const matchdays = useMemo(() => getSortedMatchdays(scores), [scores]);
+
+    // Calculate "Babies" (Losers of their last duel)
+    const babies = useMemo(() => {
+        if (!matchups || matchups.length === 0) return new Map();
+
+        const loserMap = new Map(); // teamId -> { rival: string, gameweek: string }
+
+        teams.forEach(team => {
+            // Find all duels for this team
+            const teamDuels = matchups.filter(m => m.player1_id === team.id || m.player2_id === team.id);
+            if (teamDuels.length === 0) return;
+
+            // Sort by gameweek descending to find the LAST one
+            teamDuels.sort((a, b) => b.gameweek - a.gameweek);
+            const lastDuel = teamDuels[0];
+
+            // Check if we have scores for this gameweek to determine winner
+            // If the duel is from "future" (no scores yet), we can't determine loser.
+            const duelGameweekId = `J${lastDuel.gameweek}`;
+            const weekScores = scores.find(s => s.id === duelGameweekId);
+
+            if (!weekScores) return; // No scores yet, can't determine loser
+
+            const p1Score = weekScores.scores[lastDuel.player1_id] || 0;
+            const p2Score = weekScores.scores[lastDuel.player2_id] || 0;
+
+            const isP1 = lastDuel.player1_id === team.id;
+            const myScore = isP1 ? p1Score : p2Score;
+            const rivalScore = isP1 ? p2Score : p1Score;
+            const rivalId = isP1 ? lastDuel.player2_id : lastDuel.player1_id;
+
+            if (rivalId === null) return; // Bye week, no loser
+
+            if (myScore < rivalScore) {
+                const rivalTeam = teams.find(t => t.id === rivalId);
+                loserMap.set(team.id, {
+                    rival: rivalTeam ? rivalTeam.name : 'Unknown',
+                    gameweek: duelGameweekId
+                });
+            }
+        });
+
+        return loserMap;
+    }, [teams, scores, matchups]);
 
     // Calculate data based on selection
     const displayData = useMemo(() => {
@@ -80,52 +125,55 @@ const ClassificationTab = ({ teams, scores }) => {
 
     const renderStreakIcon = (teamId) => {
         const streak = streakTeams.get(teamId);
-        if (!streak) return null;
+        // Always return something structurally if we want aligment, but for now just conditional
+        // Also check Baby
+        const baby = babies.get(teamId);
 
-        if (streak.type === 'inactive') {
-            return (
-                <div className="group relative cursor-help flex items-center">
-                    <span className="text-2xl">🌈</span>
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
-                        {streak.tooltip}
+        return (
+            <div className="flex items-center gap-1">
+                {baby && (
+                    <div className="group relative cursor-help flex items-center">
+                        <span className="text-2xl animate-pulse">👶</span>
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-red-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
+                            Perdió el duelo de la {baby.gameweek} contra {baby.rival}
+                        </div>
                     </div>
-                </div>
-            );
-        }
+                )}
 
-        if (streak.type === 'cold') {
-            return (
-                <div className="group relative flex items-center">
-                    <span className="text-2xl">🐴</span>
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-nowrap">
-                        {streak.tooltip}
+                {streak && streak.type === 'inactive' && (
+                    <div className="group relative cursor-help flex items-center">
+                        <span className="text-2xl">🌈</span>
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-normal max-w-[200px] text-center">
+                            {streak.tooltip}
+                        </div>
                     </div>
-                </div>
-            );
-        }
+                )}
 
-        if (streak.type === 'hot') {
-            let FireIcon = IconFireOrange;
-
-            if (streak.count >= 12) {
-                FireIcon = IconFireGreen;
-            } else if (streak.count >= 9) {
-                FireIcon = IconFireBlue;
-            } else if (streak.count >= 6) {
-                FireIcon = IconFirePurple;
-            }
-
-            return (
-                <div className="group relative flex items-center">
-                    <FireIcon />
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
-                        {streak.tooltip}
+                {streak && streak.type === 'cold' && (
+                    <div className="group relative flex items-center">
+                        <span className="text-2xl">🐴</span>
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10 whitespace-nowrap">
+                            {streak.tooltip}
+                        </div>
                     </div>
-                </div>
-            );
-        }
+                )}
 
-        return null;
+                {streak && streak.type === 'hot' && (
+                    <div className="group relative flex items-center">
+                        {(() => {
+                            let FireIcon = IconFireOrange;
+                            if (streak.count >= 12) FireIcon = IconFireGreen;
+                            else if (streak.count >= 9) FireIcon = IconFireBlue;
+                            else if (streak.count >= 6) FireIcon = IconFirePurple;
+                            return <FireIcon />;
+                        })()}
+                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden group-hover:block w-max px-2 py-1 bg-gray-900 text-white text-xs rounded shadow-lg z-10">
+                            {streak.tooltip}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
     };
 
     return (

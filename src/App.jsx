@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator, BarChart2 } from 'lucide-react';
+import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator, BarChart2, Swords } from 'lucide-react';
 import ClassificationTab from './components/ClassificationTab';
 import CumulativeTab from './components/CumulativeTab';
 import PredictionTab from './components/PredictionTab';
@@ -10,13 +10,16 @@ import AdminPanel from './components/AdminPanel';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabaseClient';
-import { LEAGUE_DATA } from './data/leagueData'; // Keep for fallback or seeding if needed
+import { LEAGUE_DATA } from './data/leagueData';
+import MatchupsTab from './components/MatchupsTab';
 
 function App() {
   const [activeTab, setActiveTab] = useState('classification');
   const [isAdmin, setIsAdmin] = useState(false);
   const [teams, setTeams] = useState([]);
   const [scores, setScores] = useState([]);
+  const [matchups, setMatchups] = useState([]);
+  const [currentGameweek, setCurrentGameweek] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
@@ -37,7 +40,15 @@ function App() {
 
       if (scoresError) throw scoresError;
 
-      // Process Scores into the format expected by components:
+      if (scoresError) throw scoresError;
+
+      // Fetch Matchups
+      const { data: matchupsData, error: matchupsError } = await supabase
+        .from('weekly_matchups')
+        .select('*');
+
+      if (matchupsError) throw matchupsError;
+
       // Array of { id: 'J1', scores: { teamId: points } }
       const processedScores = [];
       const matchdays = [...new Set(scoresData.map(s => s.matchday))].sort((a, b) => {
@@ -59,6 +70,11 @@ function App() {
 
       setTeams(teamsData);
       setScores(processedScores);
+      setMatchups(matchupsData || []);
+
+      const lastMatchday = matchdays[matchdays.length - 1];
+      setCurrentGameweek(lastMatchday);
+
     } catch (error) {
       console.error('Error fetching data:', error.message);
       // Fallback to mock data if DB is empty or error (optional, maybe just show empty state)
@@ -75,6 +91,7 @@ function App() {
   const tabs = [
     { id: 'classification', label: 'Clasificación', icon: Trophy },
     { id: 'cumulative', label: 'Acumulado', icon: TrendingUp },
+    { id: 'duels', label: 'Duelos', icon: Swords },
     { id: 'prediction', label: 'Predicción', icon: ChartIcon },
     { id: 'calculator', label: 'Calculadora', icon: Calculator },
     { id: 'statistics', label: 'Estadísticas', icon: BarChart2 },
@@ -87,9 +104,11 @@ function App() {
 
     switch (activeTab) {
       case 'classification':
-        return <ClassificationTab teams={teams} scores={scores} />;
+        return <ClassificationTab teams={teams} scores={scores} matchups={matchups} />;
       case 'cumulative':
         return <CumulativeTab teams={teams} scores={scores} />;
+      case 'duels':
+        return <MatchupsTab teams={teams} scores={scores} matchups={matchups} isAdmin={isAdmin} onUpdate={fetchData} />;
       case 'prediction':
         return <PredictionTab teams={teams} scores={scores} />;
       case 'calculator':
@@ -106,7 +125,7 @@ function App() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* Header */}
-        <header className="mb-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <header className="mb-8 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
           <div className="text-center sm:text-left">
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
               Fantasy League Dashboard
@@ -123,10 +142,10 @@ function App() {
           />
         </header>
 
-        {/* Admin Panel */}
+        {/* Admin Panel (Conditional) */}
         {isAdmin && (
-          <div className="animate-in fade-in slide-in-from-top-4 duration-300">
-            <AdminPanel teams={teams} onUpdate={fetchData} />
+          <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-300">
+            <AdminPanel teams={teams} scores={scores} onUpdate={fetchData} />
           </div>
         )}
 
