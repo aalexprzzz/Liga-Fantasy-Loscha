@@ -45,36 +45,137 @@ const MatchupsTab = ({ teams, scores, matchups, isAdmin, onUpdate }) => {
         setLoading(true);
         try {
             // 1. Identify active teams
-            // We need to pass the *full* scores history to safely identify inactive
             const inactiveTeams = identifyInactiveTeams(teams, scores);
-            const activeTeams = teams.filter(t => !inactiveTeams.has(t.id));
-
-            // 2. Shuffle
-            const shuffled = [...activeTeams].sort(() => 0.5 - Math.random());
-
-            // 3. Create Pairs
+            let activeTeams = teams.filter(t => !inactiveTeams.has(t.id));
             const pairs = [];
-            for (let i = 0; i < shuffled.length; i += 2) {
-                const p1 = shuffled[i];
-                const p2 = shuffled[i + 1] || null; // Bye week if odd
+
+            // 2. Handle Bye Week (Fair Rotation)
+            if (activeTeams.length % 2 !== 0) {
+                // Calculate past byes for each ACTIVE team
+                const byeCounts = new Map();
+                activeTeams.forEach(t => byeCounts.set(t.id, 0));
+
+                matchups.forEach(m => {
+                    // Start checking "Bye matches" (where player2_id is null)
+                    let p1 = m.player1_id;
+                    let p2 = m.player2_id;
+                    if (!p2 && byeCounts.has(p1)) {
+                        byeCounts.set(p1, byeCounts.get(p1) + 1);
+                    }
+                });
+
+                // Find min byes
+                let minByes = Infinity;
+                byeCounts.forEach(count => {
+                    if (count < minByes) minByes = count;
+                });
+
+                // Candidates for bye (those with minByes)
+                const byeCandidates = activeTeams.filter(t => byeCounts.get(t.id) === minByes);
+
+                // Randomly pick one among the deserving candidates
+                const selectedBye = byeCandidates[Math.floor(Math.random() * byeCandidates.length)];
+
+                // Create the Bye Match
+                pairs.push({
+                    gameweek: gw,
+                    player1_id: selectedBye.id,
+                    player2_id: null,
+                    winner_id: null
+                });
+
+                // Remove from pool
+                activeTeams = activeTeams.filter(t => t.id !== selectedBye.id);
+            }
+
+            // 3. Build History Matrix
+            const history = new Map(); // Key: "id1-id2" (sorted), Value: { count, lastGameweek }
+
+            const getPairKey = (id1, id2) => {
+                return id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+            };
+
+            matchups.forEach(m => {
+                if (m.player2_id) { // Only real duels
+                    const key = getPairKey(m.player1_id, m.player2_id);
+                    const existing = history.get(key) || { count: 0, lastGameweek: 0 };
+                    history.set(key, {
+                        count: existing.count + 1,
+                        lastGameweek: Math.max(existing.lastGameweek, m.gameweek)
+                    });
+                }
+            });
+
+            // 4. Fair Pairing (Greedy Algorithm)
+            // Shuffle first to randomize tie-breaking order
+            activeTeams.sort(() => 0.5 - Math.random());
+
+            while (activeTeams.length > 0) {
+                // If only 1 left (shouldn't happen due to bye logic, but safety check)
+                if (activeTeams.length === 1) {
+                    console.warn("Odd number of teams remaining after bye logic!?");
+                    break;
+                }
+
+                const p1 = activeTeams[0];
+                let bestP2 = null;
+                let minPenalty = Infinity;
+                let bestP2Index = -1;
+
+                // Check p1 against all other available candidates
+                for (let i = 1; i < activeTeams.length; i++) {
+                    const candidate = activeTeams[i];
+                    const key = getPairKey(p1.id, candidate.id);
+                    const record = history.get(key) || { count: 0, lastGameweek: 0 };
+
+                    // Penalty Calculation
+                    // Priority 1: Count (Primary Factor). Weight: 1,000,000
+                    // Priority 2: Recency (Secondary). We want to avoid recent matches.
+                    // Penalty = (Count * 1,000,000) + LastGameweek
+                    // Example:
+                    // Played 0 times: Penalty 0 + 0 = 0 (Best)
+                    // Played 1 time at J5: 1,000,005
+                    // Played 1 time at J10: 1,000,010 (Worse than J5) -> Correct, we prefer older match
+
+                    const penalty = (record.count * 1000000) + record.lastGameweek;
+
+                    if (penalty < minPenalty) {
+                        minPenalty = penalty;
+                        bestP2 = candidate;
+                        bestP2Index = i;
+                    }
+                }
+
+                // If no candidate found (weird), take next.
+                if (!bestP2) {
+                    bestP2 = activeTeams[1];
+                    bestP2Index = 1;
+                }
+
+                // Add Pair
                 pairs.push({
                     gameweek: gw,
                     player1_id: p1.id,
-                    player2_id: p2 ? p2.id : null,
+                    player2_id: bestP2.id,
                     winner_id: null
                 });
+
+                // Remove p1 and p2 from activeTeams
+                // activeTeams current indices: p1 is 0, p2 is bestP2Index
+                // Remove higher index first to not shift 0
+                activeTeams.splice(bestP2Index, 1);
+                activeTeams.shift(); // Remove p1
             }
 
-            // 4. Clean old matches
+            // 5. Clean old matches & Insert
+            // ... (Same as before)
             await supabase.from('weekly_matchups').delete().eq('gameweek', gw);
-
-            // 5. Insert
             const { error } = await supabase.from('weekly_matchups').insert(pairs);
             if (error) throw error;
 
-            alert(`¡Duelos generados para la J${gw}!`);
+            alert(`¡Duelos Balanceados Generados (J${gw})!\n- Byes gestionados: Sí\n- Enfrentamientos: ${pairs.length}`);
             setGenMatchday('');
-            onUpdate(); // Trigger refresh in App
+            onUpdate();
 
         } catch (err) {
             alert('Error: ' + err.message);
