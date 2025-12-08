@@ -12,6 +12,8 @@ import { twMerge } from 'tailwind-merge';
 import { supabase } from './supabaseClient';
 import { LEAGUE_DATA } from './data/leagueData';
 import MatchupsTab from './components/MatchupsTab';
+import PressConferencePage from './components/PressConferencePage';
+import { MessageSquare } from 'lucide-react';
 
 function App() {
   const [activeTab, setActiveTab] = useState('classification');
@@ -92,6 +94,7 @@ function App() {
     { id: 'classification', label: 'Clasificación', icon: Trophy },
     { id: 'cumulative', label: 'Acumulado', icon: TrendingUp },
     { id: 'duels', label: 'Duelos', icon: Swords },
+    { id: 'press', label: 'Zona Mixta', icon: MessageSquare },
     { id: 'prediction', label: 'Predicción', icon: ChartIcon },
     { id: 'calculator', label: 'Calculadora', icon: Calculator },
     { id: 'statistics', label: 'Estadísticas', icon: BarChart2 },
@@ -109,6 +112,8 @@ function App() {
         return <CumulativeTab teams={teams} scores={scores} />;
       case 'duels':
         return <MatchupsTab teams={teams} scores={scores} matchups={matchups} isAdmin={isAdmin} onUpdate={fetchData} />;
+      case 'press':
+        return <PressConferencePage />;
       case 'prediction':
         return <PredictionTab teams={teams} scores={scores} />;
       case 'calculator':
