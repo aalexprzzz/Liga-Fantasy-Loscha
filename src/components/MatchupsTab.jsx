@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Swords, Trophy } from 'lucide-react';
+import { Swords, Trophy, Milk } from 'lucide-react';
 import VersusCard from './VersusCard';
 import { supabase } from '../supabaseClient';
 import { identifyInactiveTeams } from '../utils/calculations';
@@ -295,11 +295,45 @@ const DuelLeaderboard = ({ teams, scores, matchups }) => {
                 wins: 0,
                 draws: 0,
                 losses: 0,
-                points: 0 // 3-1-0
+                points: 0, // 3-1-0
+                isPunished: false,
+                lastLossInfo: null
             });
         });
 
         if (!matchups) return Array.from(stats.values());
+
+        // Calculate Punishment (Milk)
+        // Check LAST COMPLETED duel for each team
+        teams.forEach(team => {
+            // Find ALL COMPLETED duels for this team
+            const completedDuels = matchups.filter(m =>
+                (m.player1_id === team.id || m.player2_id === team.id) &&
+                m.winner_id // Only finalized duels
+            );
+
+            if (completedDuels.length > 0) {
+                // Sort descending by gameweek
+                completedDuels.sort((a, b) => b.gameweek - a.gameweek);
+                const lastDuel = completedDuels[0];
+
+                // Check if I am the loser
+                if (lastDuel.winner_id !== team.id) {
+                    // Check if it was a draw? Rules say "winner_id !== player_id (y no es empate)"
+                    // If winner_id is present, it's not a draw usually? 
+                    // Or maybe winner_id='draw' or null?
+                    // Loop above skipped if !winner_id. 
+                    // Assuming valid winner_id means someone won.
+                    // If it's not me, I lost.
+
+                    const statsEntry = stats.get(team.id);
+                    if (statsEntry) {
+                        statsEntry.isPunished = true;
+                        statsEntry.lastLossInfo = `Perdió el duelo de la J${lastDuel.gameweek}`;
+                    }
+                }
+            }
+        });
 
         matchups.forEach(m => {
             // Skip future matches or byes?
@@ -378,8 +412,11 @@ const DuelLeaderboard = ({ teams, scores, matchups }) => {
                                 </td>
                                 <td className="px-3 py-3 flex items-center gap-2">
                                     <div className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-600 shadow-sm flex-shrink-0" style={{ backgroundColor: row.team.color }}></div>
-                                    <span className="font-bold text-gray-900 dark:text-gray-100 truncate max-w-[100px] sm:max-w-none">
+                                    <span className="font-bold text-gray-900 dark:text-gray-100 truncate max-w-[100px] sm:max-w-none flex items-center">
                                         {row.team.name}
+                                        {row.isPunished && (
+                                            <Milk className="w-4 h-4 text-pink-400 inline-block ml-2" />
+                                        )}
                                     </span>
                                 </td>
                                 <td className="px-2 py-3 text-center">{row.played}</td>

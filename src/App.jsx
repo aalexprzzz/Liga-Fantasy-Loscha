@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, TrendingUp, LineChart as ChartIcon, ListOrdered, Calculator, BarChart2, Swords } from 'lucide-react';
+import { Flame, TrendingUp, Sparkles, Calculator, BarChart2, Swords, Mic } from 'lucide-react';
 import ClassificationTab from './components/ClassificationTab';
 import CumulativeTab from './components/CumulativeTab';
 import PredictionTab from './components/PredictionTab';
@@ -91,11 +91,11 @@ function App() {
   }, []);
 
   const tabs = [
-    { id: 'classification', label: 'Clasificación', icon: Trophy },
-    { id: 'cumulative', label: 'Acumulado', icon: TrendingUp },
+    { id: 'classification', label: 'Clasificación', icon: Flame },
     { id: 'duels', label: 'Duelos', icon: Swords },
-    { id: 'press', label: 'Zona Mixta', icon: MessageSquare },
-    { id: 'prediction', label: 'Predicción', icon: ChartIcon },
+    { id: 'press', label: 'Zona Mixta', icon: Mic },
+    { id: 'cumulative', label: 'Acumulado', icon: TrendingUp },
+    { id: 'prediction', label: 'Predicción', icon: Sparkles },
     { id: 'calculator', label: 'Calculadora', icon: Calculator },
     { id: 'statistics', label: 'Estadísticas', icon: BarChart2 },
   ];

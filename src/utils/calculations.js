@@ -244,7 +244,7 @@ export const calculateStreak = (teams, scores) => {
 
             if (currentStreakType === null) {
                 // Determine the type of streak based on the LATEST matchday
-                if (points > avg) {
+                if (points >= avg) {
                     currentStreakType = 'hot';
                     hotStreak++;
                 } else if (points < avg) {
@@ -252,11 +252,13 @@ export const calculateStreak = (teams, scores) => {
                     coldStreak++;
                     debugHistory.push(`${weekId}(${points}<${avg.toFixed(1)})`);
                 } else {
-                    // Exactly average? Breaks everything?
+                    // This case is now unreachable if points == avg covers hot
+                    // But technically if points is undefined/null logic might differ. 
+                    // points is treated as 0 if undefined.
                     streakBroken = true;
                 }
             } else if (currentStreakType === 'hot') {
-                if (points > avg) {
+                if (points >= avg) {
                     hotStreak++;
                 } else {
                     streakBroken = true;
